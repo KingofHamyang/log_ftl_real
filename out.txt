@@ -1,0 +1,14 @@
+SSD capacity:		4GB
+Page size:		4KB
+Pages / Block:		128 pages
+Block size:		512KB
+Physical Blocks:	8K (8192)
+User Blocks:		8188
+LOG Blocks:		3
+PPNs:			1M (1048576)
+LPNs:			1048064
+Total runs:		x10
+Actual capacity:	4292870144 Bytes
+
+Workload : 		Multi Hot/Cold
+FTL : 			Log block FTL
