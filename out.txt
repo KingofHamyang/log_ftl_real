@@ -10,5 +10,6 @@ LPNs:			1048064
 Total runs:		x10
 Actual capacity:	4292870144 Bytes
 
-Workload : 		Multi Hot/Cold
+Workload : 		Random
 FTL : 			Log block FTL
+[Run 1] host 1048064, valid page copy 125742716, GC# 1006957, WAF=120.98

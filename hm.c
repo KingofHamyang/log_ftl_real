@@ -22,9 +22,11 @@ static void garbage_collection(void);
 /***************************************
 No restriction about return type and arguments in the following functions
 ***************************************/
-static void switch_merge(int, int);
-static void partial_merge(int, int);
-static void full_merge(int, int);
+static int switch_merge(int, int);
+static int partial_merge(int, int);
+static int full_merge(int, int, int);
+
+int full_merge_cnt = 0;
 
 int *L2B_data;
 int *L2B_log;
@@ -46,10 +48,10 @@ void ftl_open(void)
 	invalid_count_per_block = (int *)malloc(sizeof(int) * N_BLOCKS);
 	written_pages_per_block = (int *)malloc(sizeof(int) * N_BLOCKS);
 	invalid_pages = (int *)malloc(sizeof(int) * N_PAGES_PER_BLOCK * N_BLOCKS);
-	log_index = (int *)malloc(sizeof(int) * NUM_LOGBLOCK);
+	log_index = (int *)malloc(sizeof(int) * (NUM_LOGBLOCK - 1));
 
-	log_PMT = (int **)malloc(sizeof(int *) * NUM_LOGBLOCK);
-	for (int i = 0; i < NUM_LOGBLOCK; i++)
+	log_PMT = (int **)malloc(sizeof(int *) * (NUM_LOGBLOCK - 1));
+	for (int i = 0; i < NUM_LOGBLOCK - 1; i++)
 	{
 		log_PMT[i] = (int *)malloc(sizeof(int) * N_PAGES_PER_BLOCK);
 	}
@@ -68,14 +70,14 @@ void ftl_open(void)
 		invalid_pages[i] = 0;
 	}
 
-	for (int i = 0; i < NUM_LOGBLOCK; i++)
+	for (int i = 0; i < NUM_LOGBLOCK - 1; i++)
 	{
 		for (int j = 0; j < N_PAGES_PER_BLOCK; j++)
 		{
 			log_PMT[i][j] = -1;
 		}
 	}
-	for (int i = 0; i < NUM_LOGBLOCK; i++)
+	for (int i = 0; i < NUM_LOGBLOCK - 1; i++)
 	{
 		log_index[i] = -1;
 	}
@@ -118,7 +120,7 @@ void ftl_read(long lpn, u32 *read_buffer)
 		{
 			int log_mem = 0;
 			int log_block = L2B_log[block_n];
-			for (int i = 0; i < NUM_LOGBLOCK; i++)
+			for (int i = 0; i < NUM_LOGBLOCK - 1; i++)
 			{
 				if (log_index[i] == log_block)
 				{
@@ -194,11 +196,12 @@ void ftl_write(long lpn, u32 *write_buffer)
 	{
 
 		////log block allocate
-		invalid_pages[P_Block * N_PAGES_PER_BLOCK + index] = 1;
+
 	NEW:
 		if (L2B_log[block_n] == -1)
 		{
-			if (log_block_cnt >= NUM_LOGBLOCK)
+			int flag2 = 0;
+			if (log_block_cnt >= NUM_LOGBLOCK - 1)
 			{
 				garbage_collection();
 			}
@@ -209,19 +212,24 @@ void ftl_write(long lpn, u32 *write_buffer)
 					log_Block = i;
 					L2B_log[block_n] = log_Block;
 					log_block_cnt++;
+					flag2 = 1;
 					break;
 				}
 			}
-			for (int i = 0; i < N_USER_BLOCKS; i++)
+			if (flag2 == 1)
 			{
-				if (log_index[i] == -1)
+				for (int i = 0; i < NUM_LOGBLOCK - 1; i++)
 				{
-					log_index[i] = log_Block;
-					log_mem = i;
-					initialize_log_PMT(log_mem);
-					break;
+					if (log_index[i] == -1)
+					{
+						log_index[i] = log_Block;
+						log_mem = i;
+						initialize_log_PMT(log_mem);
+						break;
+					}
 				}
 			}
+			//TODO -> 밑에꺼도 예외처리, lgo block 갯수 컨트롤
 		}
 		if (log_Block == -1)
 		{
@@ -237,7 +245,7 @@ void ftl_write(long lpn, u32 *write_buffer)
 					break;
 				}
 			}
-			for (int i = 0; i < N_USER_BLOCKS; i++)
+			for (int i = 0; i < NUM_LOGBLOCK - 1; i++)
 			{
 				if (log_index[i] == -1)
 				{
@@ -249,7 +257,7 @@ void ftl_write(long lpn, u32 *write_buffer)
 				}
 			}
 		}
-		for (int i = 0; i < N_USER_BLOCKS; i++)
+		for (int i = 0; i < NUM_LOGBLOCK - 1; i++)
 		{
 			if (log_index[i] == log_Block)
 			{
@@ -270,11 +278,11 @@ void ftl_write(long lpn, u32 *write_buffer)
 			}
 			if (cnt == 0)
 			{
-				switch_merge(P_Block, log_Block);
+				P_Block = switch_merge(P_Block, log_Block);
 			}
 			else
 			{
-				full_merge(P_Block, log_Block);
+				P_Block = full_merge(P_Block, log_Block, 0);
 			}
 			goto NEW;
 		}
@@ -288,14 +296,16 @@ void ftl_write(long lpn, u32 *write_buffer)
 		}
 		log_PMT[log_mem][index] = written_pages_per_block[log_Block];
 		written_pages_per_block[log_Block]++;
+		invalid_pages[P_Block * N_PAGES_PER_BLOCK + index] = 1;
 	}
 
 	return;
 }
 
-static void switch_merge(int P_Block, int log_Block)
+static int switch_merge(int P_Block, int log_Block)
 {
 	//printf("asdfsadf ");
+
 	int origin = 0;
 	for (int i = 0; i < N_USER_BLOCKS; i++)
 	{
@@ -305,7 +315,7 @@ static void switch_merge(int P_Block, int log_Block)
 			break;
 		}
 	}
-	L2B_log[origin] = log_Block;
+	L2B_data[origin] = log_Block;
 	nand_erase(P_Block);
 	for (int i = 0; i < N_PAGES_PER_BLOCK; i++)
 	{
@@ -313,7 +323,7 @@ static void switch_merge(int P_Block, int log_Block)
 	}
 	written_pages_per_block[P_Block] = 0;
 
-	for (int i = 0; i < N_USER_BLOCKS; i++)
+	for (int i = 0; i < NUM_LOGBLOCK - 1; i++)
 	{
 		if (log_index[i] == log_Block)
 		{
@@ -322,8 +332,9 @@ static void switch_merge(int P_Block, int log_Block)
 		}
 	}
 	log_block_cnt--;
+	return L2B_data[origin];
 }
-static void partial_merge(int P_Block, int log_Block)
+static int partial_merge(int P_Block, int log_Block)
 {
 	u32 data;
 	u32 spare;
@@ -333,6 +344,7 @@ static void partial_merge(int P_Block, int log_Block)
 	{
 		nand_read(P_Block, i, &data, &spare);
 		nand_write(log_Block, i, data, spare);
+		s.gc_write++;
 		written_pages_per_block[log_Block]++;
 	}
 
@@ -345,7 +357,8 @@ static void partial_merge(int P_Block, int log_Block)
 			break;
 		}
 	}
-	L2B_log[origin] = log_Block;
+
+	L2B_data[origin] = log_Block;
 	nand_erase(P_Block);
 	for (int i = 0; i < N_PAGES_PER_BLOCK; i++)
 	{
@@ -353,7 +366,7 @@ static void partial_merge(int P_Block, int log_Block)
 	}
 	written_pages_per_block[P_Block] = 0;
 
-	for (int i = 0; i < N_USER_BLOCKS; i++)
+	for (int i = 0; i < NUM_LOGBLOCK - 1; i++)
 	{
 		if (log_index[i] == log_Block)
 		{
@@ -362,9 +375,11 @@ static void partial_merge(int P_Block, int log_Block)
 		}
 	}
 	log_block_cnt--;
+	return L2B_data[origin];
 }
-static void full_merge(int P_Block, int log_Block)
+static int full_merge(int P_Block, int log_Block, int flag)
 {
+	full_merge_cnt++;
 
 	//printf("asdfsadf ");
 	u32 data;
@@ -379,7 +394,7 @@ static void full_merge(int P_Block, int log_Block)
 			break;
 		}
 	}
-	for (int i = 0; i < N_USER_BLOCKS; i++)
+	for (int i = 0; i < NUM_LOGBLOCK - 1; i++)
 	{
 		if (log_index[i] == log_Block)
 		{
@@ -392,13 +407,23 @@ static void full_merge(int P_Block, int log_Block)
 	{
 		if (invalid_pages[P_Block * N_PAGES_PER_BLOCK + i] == 0)
 		{
-			nand_read(P_Block, i, &data, &spare);
+			if (nand_read(P_Block, i, &data, &spare) == -1)
+			{
+				printf("full merge data read error\n");
+			}
 			nand_write(spare_block, i, data, spare);
 			written_pages_per_block[spare_block]++;
 		}
 		else
 		{
-			nand_read(log_Block, log_PMT[log_mem][i], &data, &spare);
+			if (nand_read(log_Block, log_PMT[log_mem][i], &data, &spare) == -1)
+			{
+				for (int i = 0; i < N_PAGES_PER_BLOCK; i++)
+				{
+					printf("%d	%d %d %d\n", invalid_pages[P_Block * N_PAGES_PER_BLOCK + i], log_PMT[0][i], log_PMT[1][i], log_PMT[2][i]);
+				}
+				printf("full merge log read error\n %d %d %d %d %d", written_pages_per_block[log_Block], i, log_mem, full_merge_cnt, flag);
+			}
 			nand_write(spare_block, i, data, spare);
 			written_pages_per_block[spare_block]++;
 		}
@@ -417,6 +442,8 @@ static void full_merge(int P_Block, int log_Block)
 	L2B_data[origin] = spare_block;
 	L2B_log[origin] = -1;
 	spare_block = P_Block;
+	log_block_cnt--;
+	return L2B_data[origin];
 }
 
 static void garbage_collection(void)
@@ -425,6 +452,7 @@ You can add some arguments and change
 return type to anything you want
 ***************************************/
 {
+	s.gc++;
 	int victim_data;
 	int victim_log;
 	for (int i = 0; i < N_USER_BLOCKS; i++)
@@ -433,20 +461,43 @@ return type to anything you want
 		victim_log = L2B_log[i];
 		if (victim_data != -1 && victim_log != -1)
 		{
-			full_merge(victim_data, victim_log);
+
+			full_merge(victim_data, victim_log, 1);
+			return;
 		}
 	}
+}
 
-	s.gc++;
+int can_be_switch(int P_Block, int log_Block)
+{
+	int log_mem = 0;
+	for (int i = 0; i < NUM_LOGBLOCK - 1; i++)
+	{
+		if (log_index[i] == log_Block)
+		{
+			log_mem = i;
+			break;
+		}
+	}
+	int cnt = 0;
+	for (int i = 0; i < N_PAGES_PER_BLOCK; i++)
+	{
+		if (log_PMT[log_mem][i] != i)
+		{
+			cnt = 1;
+			break;
+		}
+	}
+	if (cnt == 0)
+	{
+		return 1;
+	}
+	else
+	{
+		return 0;
+	}
+}
 
-	/***************************************
-Add
-
-s.gc_write++;
-
-for every nand_write call (every valid page copy)
-that you issue in this function
-***************************************/
-
-	return;
+int can_be_partial(int P_Block, int log_Block)
+{
 }

@@ -18,102 +18,99 @@
 #include <assert.h>
 #include "hm.h"
 
-
-
-char *bit2cap (int b)
+long cnt = 0;
+char *bit2cap(int b)
 {
 	static char *unit[] = {"", "K", "M", "G", "T", "P", "E"};
 	static char buf[32];
 
 	int u = b / 10;
 
-   	if (u > 6)
-        return "<Too Big>";
+	if (u > 6)
+		return "<Too Big>";
 
-	sprintf (buf, "%d%s", (1 << (b - u*10)), unit[u]);
+	sprintf(buf, "%d%s", (1 << (b - u * 10)), unit[u]);
 	return buf;
 }
 
-void sim_init (void)
+void sim_init(void)
 {
-  	s.gc = 0;
-   	s.host_write = 0;
-   	s.gc_write = 0;
-	srand (0);
+	s.gc = 0;
+	s.host_write = 0;
+	s.gc_write = 0;
+	srand(0);
 
 	ftl_open();
 }
 
-void show_info (void)
+void show_info(void)
 {
-	printf ("SSD capacity:\t\t%sB\n", bit2cap (SSD_SHIFT));
-	printf ("Page size:\t\t%sB\n", bit2cap (PAGE_SHIFT));
-	printf ("Pages / Block:\t\t%d pages\n", N_PAGES_PER_BLOCK);
-   	printf ("Block size:\t\t%sB\n", bit2cap (PAGES_PER_BLOCK_SHIFT + PAGE_SHIFT));
-//	printf ("OP ratio:\t\t%d%%\n", OP_RATIO);
-	printf ("Physical Blocks:\t%s (%d)\n", bit2cap(BLOCKS_SHIFT), N_BLOCKS);
-   	printf ("User Blocks:\t\t%d\n", N_USER_BLOCKS);
-	printf ("LOG Blocks:\t\t%d\n", NUM_LOGBLOCK);
-	printf ("PPNs:\t\t\t%s (%d)\n", bit2cap (PPN_SHIFT), N_PPNS);
-	printf ("LPNs:\t\t\t%d\n", N_LPNS);
-   	printf ("Total runs:\t\tx%d\n", N_RUNS);
-	printf ("Actual capacity:\t%ld Bytes\n\n", (long) N_LPNS * N_PAGE_SIZE);
+	printf("SSD capacity:\t\t%sB\n", bit2cap(SSD_SHIFT));
+	printf("Page size:\t\t%sB\n", bit2cap(PAGE_SHIFT));
+	printf("Pages / Block:\t\t%d pages\n", N_PAGES_PER_BLOCK);
+	printf("Block size:\t\t%sB\n", bit2cap(PAGES_PER_BLOCK_SHIFT + PAGE_SHIFT));
+	//	printf ("OP ratio:\t\t%d%%\n", OP_RATIO);
+	printf("Physical Blocks:\t%s (%d)\n", bit2cap(BLOCKS_SHIFT), N_BLOCKS);
+	printf("User Blocks:\t\t%d\n", N_USER_BLOCKS);
+	printf("LOG Blocks:\t\t%d\n", NUM_LOGBLOCK);
+	printf("PPNs:\t\t\t%s (%d)\n", bit2cap(PPN_SHIFT), N_PPNS);
+	printf("LPNs:\t\t\t%d\n", N_LPNS);
+	printf("Total runs:\t\tx%d\n", N_RUNS);
+	printf("Actual capacity:\t%ld Bytes\n\n", (long)N_LPNS * N_PAGE_SIZE);
 
 #ifdef MULTI_HOT_COLD
 	printf("Workload : \t\tMulti Hot/Cold\n");
 #elif HOT_COLD
 	printf("Workload : \t\tHot/Cold\n");
-#else 
+#else
 	printf("Workload : \t\tRandom\n");
 #endif
 
-	printf ("FTL : \t\t\tLog block FTL\n");
-
+	printf("FTL : \t\t\tLog block FTL\n");
 }
 
 long get_lpn(void)
 {
 	long lpn;
-	double prob;	
+	double prob;
 
 #ifdef MULTI_HOT_COLD
 	prob = random() % 100;
 
 	if (prob < HOT_RATIO)
 	{
-	// HOT
-		lpn = random () % HOT_LPN;
+		// HOT
+		lpn = random() % HOT_LPN;
 	}
 	else if (prob < HOT_RATIO + WARM_RATIO)
 	{
-	// WARM
-		lpn = HOT_LPN + (random () % WARM_LPN); 
+		// WARM
+		lpn = HOT_LPN + (random() % WARM_LPN);
 	}
-	else 
+	else
 	{
-	// COLD
-		lpn = HOT_LPN + WARM_LPN + (random () % COLD_LPN);
+		// COLD
+		lpn = HOT_LPN + WARM_LPN + (random() % COLD_LPN);
 	}
 
 #elif HOT_COLD
-	prob = random () % 100;
-	if (prob < HOT_RATIO) 
+	prob = random() % 100;
+	if (prob < HOT_RATIO)
 	{
-	// HOT
-		lpn = random () % HOT_LPN;
-	} 
-	else 
+		// HOT
+		lpn = random() % HOT_LPN;
+	}
+	else
 	{
-	// COLD
-		lpn = HOT_LPN + (random () % COLD_LPN);
+		// COLD
+		lpn = HOT_LPN + (random() % COLD_LPN);
 	}
 #else
-	lpn = random () % N_LPNS;
+	lpn = random() % N_LPNS;
 #endif
 
 	return lpn;
 }
-
 
 void sim()
 {
@@ -123,7 +120,9 @@ void sim()
 
 	while (s.host_write < LPN_COUNTS)
 	{
-		lpn = get_lpn ();
+		//lpn = get_lpn();
+		lpn = cnt % N_LPNS;
+		cnt++;
 		write_buffer = (u32)lpn;
 
 		ftl_write(lpn, &write_buffer);
@@ -133,30 +132,31 @@ void sim()
 		assert(read_buffer == (u32)lpn);
 
 		s.host_write++;
-		if (s.host_write % N_LPNS == 0) {
-			printf ("[Run %d] host %ld, valid page copy %ld, GC# %d, WAF=%.2f\n",
-					(int) s.host_write / N_LPNS, 
-                    			s.host_write, s.gc_write, s.gc, 
-					(double) (s.host_write + s.gc_write) / (double) s.host_write);
+		if (s.host_write % N_LPNS == 0)
+		{
+			printf("[Run %d] host %ld, valid page copy %ld, GC# %d, WAF=%.2f\n",
+				   (int)s.host_write / N_LPNS,
+				   s.host_write, s.gc_write, s.gc,
+				   (double)(s.host_write + s.gc_write) / (double)s.host_write);
 		}
 	}
 }
 
-void show_stat (void)
+void show_stat(void)
 {
-	printf ("\nResults ------\n");
-	printf ("Host writes:\t\t%ld\n", s.host_write);
-	printf ("GC writes:\t\t%ld\n", s.gc_write);
-	printf ("Number of GCs:\t\t%d\n", s.gc);
-	printf ("Valid pages per GC:\t%.2f pages\n", (double) s.gc_write / (double) s.gc);
-	printf ("WAF:\t\t\t%.2f\n", (double) (s.host_write + s.gc_write) / (double) s.host_write);
+	printf("\nResults ------\n");
+	printf("Host writes:\t\t%ld\n", s.host_write);
+	printf("GC writes:\t\t%ld\n", s.gc_write);
+	printf("Number of GCs:\t\t%d\n", s.gc);
+	printf("Valid pages per GC:\t%.2f pages\n", (double)s.gc_write / (double)s.gc);
+	printf("WAF:\t\t\t%.2f\n", (double)(s.host_write + s.gc_write) / (double)s.host_write);
 }
 
-int main (void)
+int main(void)
 {
-	sim_init ();
-	show_info ();
-	sim ();
-	show_stat ();
+	sim_init();
+	show_info();
+	sim();
+	show_stat();
 	return 0;
 }

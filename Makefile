@@ -10,7 +10,7 @@
 PREFIX		=
 CC			= $(PREFIX)gcc
 CXX			= $(PREFIX)g++
-WORKLOAD	= 	-DMULTI_HOT_COLD
+WORKLOAD	= 	#-DMULTI_HOT_COLD
 				#-DHOT_COLD 
 				# if -DHOT_COLD is not set, WORKLOAD will be random
 
